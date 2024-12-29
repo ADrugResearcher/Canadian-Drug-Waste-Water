@@ -12,6 +12,7 @@ integer_breaks <- function(n = 5, ...) {
   }
   return(fxn)
 }
+`%notin%` <- Negate(`%in%`)
 ####-------------------------Data Import---------------------------------####
 # data sourced from: 
 # https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1310087101&request_locale=en
@@ -108,42 +109,63 @@ mycolours <- c("#000","#E69F00", "#56B4E9", "#009E73",
               "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 names(mycolours) <- unique(waste1$site)
 
-myshapes <- c(19, 15, 10, 1)
+myshapes <- c(19, 25, 15, 25)
 
 date_range <- seq.Date(min(waste1$tdate), max(waste1$tdate), by = "1 month")
 
+
+# Breaking the Site options into 2 groups for the 2nd tab
+site1 <- c("Weighted average\n(all cities)", "Vancouver, BC",
+           "Edmonton, AB", "Toronto, ON")
+site2 <- unique(waste1$site[waste1$site %notin% site1])
+  
+
 ####---------------------------------UI------------------------------------####
 library(shiny)
+library(shinythemes)
 ui <- navbarPage(title = "Select Drug Waste Water Analysis",
+                 theme = shinytheme("flatly"),
 #####------------------------Tab Panel 1---------------------------------####
   tabPanel("By Location",
-           sidebarLayout(
-    sidebarPanel(width = 3,
+           fluidRow(
+           column(width = 4,
       selectInput("site", "Site", choices = unique(waste1$site),
-                  selected = "Weighted average, cities measured"),
+                  selected = "Weighted average, cities measured")),
+      column(width = 4,
       selectInput("drug", "drug", choices = unique(waste1$drug),
-                  selected = "Fentanyl (Norfentanyl)"),
+                  selected = "Fentanyl (Norfentanyl)")),
+      column(width = 4,
       radioButtons("comparey", "Compare Year?", choices = c("Yes", "No"),
-                   selected = "No")
-    ),
-    mainPanel(width = 9,
+                   selected = "No"))),
+    fluidRow(
+    mainPanel(width = 12,
       plotOutput("wasteplot")
-    )
-  )), 
+    )),
+    ),
   #####------------------------Tab Panel 2---------------------------------####
   tabPanel("Comparison by City",
-           sidebarLayout(
-             sidebarPanel(width = 3,
+           fluidRow(
+             column(width = 1,
+                    offset = 0,
                checkboxGroupInput("periods", "year", choices = c(2022,2023),
-                                  selected = c("2022","2023")),
-               checkboxGroupInput("site2", "Site", 
-                                 choices = unique(waste1$site),
+                                  selected = c("2022","2023"))),
+               column(width = 2,
+                      offset = 0,
+               checkboxGroupInput("site_f", "Site", 
+                                 choices = site1,
                                  selected = c("Edmonton, AB", 
-                                              "Vancouver, BC" )),
-                                  selectInput("drug2", "drug", choices = unique(waste1$drug),
-                                              selected = "Fentanyl (Norfentanyl)")
+                                              "Vancouver, BC" ))),
+             column(width = 2,
+                    offset = 0,
+                    checkboxGroupInput("site_s", "",
+                                       choices = site2)),
+               column(width = 3,
+                      offset = 0,
+                      selectInput("drug2", "drug", choices = unique(waste1$drug),
+                                  selected = "Fentanyl (Norfentanyl)"))
                ),
-               mainPanel(width = 9,
+           fluidRow(
+               mainPanel(width = 12,
                  plotOutput("crossplot")
                )
              )
@@ -176,8 +198,9 @@ server <- function(input, output, session) {
   #####----------Graph output-------------------------------------------####
   output$wasteplot <- renderPlot({
     
-    max_y <- minmax_d |> 
-      filter(drug == drugs()) |> 
+    max_y <- minmax_ct |> 
+      filter(drug == drugs() & site == input$site) |> 
+      summarise(max = max(max)) |>
       pull(max)
     # Since the grouping is a bit different, pass the initial aesthetics
     # to p
@@ -188,7 +211,8 @@ server <- function(input, output, session) {
       geom_errorbar(group = 1, colour = "black",
                   aes(ymin = low_conf, ymax = high_conf),
                   width = 20) +
-      scale_x_date(date_breaks = "1 month", date_labels = "%b\n%Y")
+      scale_x_date(date_breaks = "1 month", date_labels = "%b\n%Y",
+                   expand = c(0,0))
     } else{
       p<- ggplot(the_waste(), 
                aes(x = tmonths, y = Load, group = tyear, 
@@ -202,7 +226,9 @@ server <- function(input, output, session) {
                         breaks = integer_breaks()) +
     labs(title = paste ("Waste Water Load in", thesite(), " by ", input$drug),
          x = "Date",
-         y = y_labs) +
+         y = y_labs,
+         caption = "Note: y-axis change is relative to substance & city chosen
+           E.g., y-axis for fentanyl in Toronto will be different than y for Vancouver") +
     theme_bw() +
     theme(plot.title = element_text(hjust = 0.5, size = 16),
           axis.text = element_text(size = 10),
@@ -210,7 +236,8 @@ server <- function(input, output, session) {
           plot.caption = element_text(size = 10),
           legend.title=element_text(size=13),
           legend.text = element_text(size = 10)) +
-    geom_point(aes(shape = imputation_rate1), size = 3) +
+    geom_point(aes(shape = imputation_rate1), size = 3,
+               colour = "black") +
     scale_shape_manual(values = myshapes, name = "Imputation Rate")
 
   })
@@ -218,7 +245,9 @@ server <- function(input, output, session) {
       
 ####----------------------------Graph 2------------------------------------####
   doc <- reactive(input$drug2)
-  places <- reactive(input$site2)
+  places <- reactive({
+    c(input$site_f, input$site_s)
+  })
   years <- reactive(input$periods)
   
   output$crossplot <- renderPlot({
@@ -234,7 +263,6 @@ server <- function(input, output, session) {
       filter(drug == doc() & site %in% places()) |> 
       summarise(max = max(max)) |>
       pull(max)
-    print(max_y)
     
     df <- waste1 |> 
       filter(site %in% places() & drug == doc() &
@@ -255,8 +283,7 @@ server <- function(input, output, session) {
       labs(title = paste("Waste Water Load for", places2, "for", doc()),
            x = "Date",
            y = y_labs,
-           caption = "Note: y-axis change is relative to substance &
-           Cities chosen") +
+           caption = "Note: y-axis change is relative to substance & cities chosen") +
       theme_bw() +
       theme(plot.title = element_text(hjust = 0.5, size = 16),
             axis.text = element_text(size = 10),
