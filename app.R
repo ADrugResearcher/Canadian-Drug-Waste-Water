@@ -140,7 +140,8 @@ ui <- navbarPage(title = "Select Drug Waste Water Analysis",
     fluidRow(
     mainPanel(width = 12,
       plotOutput("wasteplot")
-    )),
+    )
+    )
     ),
   #####------------------------Tab Panel 2---------------------------------####
   tabPanel("Comparison by City",
@@ -168,7 +169,7 @@ ui <- navbarPage(title = "Select Drug Waste Water Analysis",
                mainPanel(width = 12,
                  plotOutput("crossplot")
                )
-             )
+             ),
            )
   )
 
@@ -241,8 +242,6 @@ server <- function(input, output, session) {
     scale_shape_manual(values = myshapes, name = "Imputation Rate")
 
   })
-
-      
 ####----------------------------Graph 2------------------------------------####
   doc <- reactive(input$drug2)
   places <- reactive({
