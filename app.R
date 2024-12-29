@@ -249,7 +249,8 @@ server <- function(input, output, session) {
             legend.text = element_text(size = 10)) +
       geom_point(aes(shape = imputation_rate1), size = 3,
                  colour = "black") +
-      scale_shape_manual(values = myshapes, name = "Imputation Rate")
+      scale_shape_manual(values = myshapes, name = "Imputation Rate",
+                         guide = guide_legend(reverse = T))
     
   })
   #####------------------Table Output p1------------------------------------####
