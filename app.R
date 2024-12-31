@@ -106,10 +106,10 @@ y_labs <- gsub("day ", "day\n", waste1$title)
 # sourced from:
 # https://davidmathlogic.com/colorblind/#%23D81B60-%231E88E5-%23FFC107-%23004D40
 mycolours <- c("#000","#E69F00", "#56B4E9", "#009E73",
-               "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+               "#E6DA37", "#0072B2", "#D55E00", "#CC79A7")
 names(mycolours) <- unique(waste1$site)
 
-myshapes <- c(19, 25, 15, 17)
+myshapes <- c(21, 25, 22, 24)
 
 date_range <- seq.Date(min(waste1$tdate), max(waste1$tdate), by = "1 month")
 
@@ -121,11 +121,16 @@ site2 <- unique(waste1$site[waste1$site %notin% site1])
 
 
 ####---------------------------------UI------------------------------------####
+light <- bslib::bs_theme(version = 5, bootswatch = "flatly")
+dark <- bslib::bs_theme(version = 5, bootswatch = "darkly")
+
+
 library(shiny)
 library(shinythemes)
+library(bslib)
 source("text_info.R")
 ui <- navbarPage(title = "Select Drug Waste Water Analysis",
-                 theme = shinytheme("flatly"),
+                 theme = light,
                  #####------------------------Tab Panel 1---------------------------------####
                  tabPanel("By Location",
                           fluidRow(
@@ -179,13 +184,16 @@ ui <- navbarPage(title = "Select Drug Waste Water Analysis",
                           fluidRow(
                             tableOutput("info2")
                           ),
-                 )
+                 ),                  bslib::nav_spacer(),
+                 bslib::nav_item(input_dark_mode(id = "mode"))
 )
 
 ####-----------------------------Server------------------------------------####
 
 server <- function(input, output, session) {
   
+  
+
   ####----------------------------Graph 1------------------------------------####
   #####------------------Reactive Variables-----------------------------####
   drugs <- reactive(input$drug)
@@ -217,8 +225,8 @@ server <- function(input, output, session) {
     if(input$comparey == "No"){
       p <- ggplot(the_waste(), 
                   aes(x = tdate, y = Load)) +
-        geom_line(group = 1, colour = "black") +
-        geom_errorbar(group = 1, colour = "black",
+        geom_line(group = 1, linewidth = 0.9, colour = "black") +
+        geom_errorbar(group = 1, linewidth = 0.9, colour = "black",
                       aes(ymin = low_conf, ymax = high_conf),
                       width = 20) +
         scale_x_date(date_breaks = "1 month", date_labels = "%b\n%Y",
@@ -227,8 +235,8 @@ server <- function(input, output, session) {
       p<- ggplot(the_waste(), 
                  aes(x = tmonths, y = Load, group = tyear, 
                      colour = tyear)) +
-        geom_line() +
-        geom_errorbar(aes(ymin = low_conf, ymax = high_conf),
+        geom_line(linewidth = 0.9) +
+        geom_errorbar(linewidth = 0.9, aes(ymin = low_conf, ymax = high_conf),
                       width = 0.4) +
         scale_colour_manual(values = c("#332288","#88CCEE"), name = "Year")
     }
@@ -240,18 +248,17 @@ server <- function(input, output, session) {
            y = y_labs,
            caption = "Note: y-axis change is relative to substance & city chosen
            E.g., y-axis for fentanyl in Toronto will be different than y for Vancouver") +
+      geom_point(aes(shape = imputation_rate1), size = 2.5,
+                 fill = "black") +
+      scale_shape_manual(values = myshapes, name = "Imputation Rate",
+                         guide = guide_legend(reverse = T)) +
       theme_bw() +
       theme(plot.title = element_text(hjust = 0.5, size = 16),
             axis.text = element_text(size = 10),
             axis.title = element_text(size = 12),
             plot.caption = element_text(size = 10),
             legend.title=element_text(size=13),
-            legend.text = element_text(size = 10)) +
-      geom_point(aes(shape = imputation_rate1), size = 3,
-                 colour = "black") +
-      scale_shape_manual(values = myshapes, name = "Imputation Rate",
-                         guide = guide_legend(reverse = T))
-    
+            legend.text = element_text(size = 10))
   })
   #####------------------Table Output p1------------------------------------####
   output$extra_info <- renderTable({
@@ -262,13 +269,16 @@ server <- function(input, output, session) {
                          high_conf = "",
                          imputation_rate = "")
     } else{
-      tbdf <- nearPoints(the_waste(), input$plot_click)
-      tbdf <- tbdf |>
+      tbdf <- nearPoints(the_waste(), input$plot_click, 
+                         threshold = 15, maxpoints = 1)
+      
+      tbdf <- the_waste() |> 
+        filter(ref_date %in% tbdf$ref_date) |> 
         select(tdate, Load, low_conf, high_conf, imputation_rate) |> 
         mutate(tdate = paste(month(tdate, label = T), year(tdate)))
     }
     colnames(tbdf) <- c("Date", "Load Per Capita", "Low 95% Confidence Interval",
-                        "High 95% confidence interval", "Imputation Rate")
+                        "High 95% confidence Interval", "Imputation Rate")
     tbdf
   })
   ####----------------------------Graph 2------------------------------------####
@@ -300,17 +310,22 @@ server <- function(input, output, session) {
     
     #Still trying to figure out dynamic setting for width of the error bars
     errorwidth <- ifelse(length(years()) == 2, 4, 2)
-    p<- g2df() %>%
+    g2df() %>%
       ggplot(., 
              aes(x = tdate, y = Load,
-                 group = site, colour = as.factor(site)) ) +
-      geom_line() +
-      geom_errorbar(
+                 group = site, fill = as.factor(site),
+             colour = as.factor(site))) +
+      geom_line(linewidth = 0.9) +
+      geom_errorbar(linewidth = 0.9,
         aes(ymin = low_conf, ymax = high_conf)) +
       scale_x_date(date_breaks = "1 month", date_labels = "%b\n%Y") +
+      geom_point(size = 2.5, aes(shape = imputation_rate1)) +
+      scale_fill_manual(values = mycolours, name = "fill") +
       scale_colour_manual(values = mycolours, name = "Cities") +
       scale_y_continuous(limits = c(0, max_y), 
                          breaks = integer_breaks()) +
+      scale_shape_manual(values = myshapes, name = "Imputation Rate",
+                         guide = guide_legend(reverse = T)) +
       labs(title = paste("Waste Water Load for", places2, "for", doc()),
            x = "Date",
            y = y_labs,
@@ -321,10 +336,9 @@ server <- function(input, output, session) {
             axis.title = element_text(size = 12),
             plot.caption = element_text(size = 10),
             legend.title=element_text(size=12),
-            legend.text = element_text(size = 10))
-    p + geom_point(size = 3, aes(shape = imputation_rate1)) +
-      scale_shape_manual(values = myshapes, name = "Imputation Rate",
-                         guide = guide_legend(reverse = T))
+            legend.text = element_text(size = 10)) +
+      guides(fill = "none")
+
   })
   #####------------------Table Output p2------------------------------####
 
@@ -337,7 +351,8 @@ server <- function(input, output, session) {
                          high_conf = "",
                          imputation_rate = "")
     } else{
-      df <- nearPoints(g2df(), input$plot_click2)
+      df <- nearPoints(g2df(), input$plot_click2,
+                       threshold = 15, maxpoints = 1)
       tbdf <- waste1 |> 
         filter(site %in% places() & drug == doc() &
                  ref_date %in% df$ref_date) |> 
@@ -345,14 +360,11 @@ server <- function(input, output, session) {
         mutate(tdate = paste(month(tdate, label = T), year(tdate)))
     }
     colnames(tbdf) <- c("Site", "Date", "Load Per Capita", "Low 95% Confidence Interval",
-                        "High 95% confidence interval", "Imputation Rate")
-    print(tbdf)
+                        "High 95% confidence Interval", "Imputation Rate")
     tbdf
   })
   
-  
-  
-  
+
 }
 ####----------------------------Run App------------------------------------####
 shinyApp(ui = ui, server = server)
